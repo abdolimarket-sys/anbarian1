@@ -8,10 +8,15 @@
  */
 
 import type { Product } from '@/types';
-import * as XLSX from 'xlsx';
 import { products, settings, logAudit, save, rebuildIndex, invalidateStats } from './state';
 import { toast } from './ui';
 import { downloadFile, dateStr, generateId } from '@/utils/helpers';
+
+declare global {
+  interface Window {
+    XLSX?: any;
+  }
+}
 
 export type ImportMode = 'merge' | 'replace';
 
@@ -508,32 +513,39 @@ async function processExcelFile(
 ): Promise<ImportResult | null> {
   const buf = await file.arrayBuffer();
 
-  try {
-    const wb = XLSX.read(new Uint8Array(buf), { type: 'array' });
-    const sheetName = wb.SheetNames[0];
-    if (!sheetName) {
-      toast('برگه‌ای در فایل اکسل پیدا نشد', 'error');
+  // Prefer SheetJS if loaded
+  if (window.XLSX) {
+    try {
+      const wb = window.XLSX.read(new Uint8Array(buf), { type: 'array' });
+      const sheetName = wb.SheetNames[0];
+      const sheet = wb.Sheets[sheetName];
+      const matrix: unknown[][] = window.XLSX.utils.sheet_to_json(sheet, {
+        header: 1,
+        defval: '',
+        raw: false,
+      });
+      const rows = matrixToImportRows(matrix);
+      if (!rows.length) {
+        toast('ردیف معتبری پیدا نشد', 'error');
+        return null;
+      }
+      const m = mode || (await askImportMode());
+      if (!m) return null;
+      return applyImportRows(rows, m);
+    } catch (err) {
+      console.error(err);
+      toast('خطا در خواندن اکسل', 'error');
       return null;
     }
-    const sheet = wb.Sheets[sheetName];
-    const matrix: unknown[][] = XLSX.utils.sheet_to_json(sheet, {
-      header: 1,
-      defval: '',
-      raw: false,
-    });
-    const rows = matrixToImportRows(matrix);
-    if (!rows.length) {
-      toast('ردیف معتبری پیدا نشد؛ عنوان ستون‌ها را بررسی کنید', 'error');
-      return null;
-    }
-    const m = mode || (await askImportMode());
-    if (!m) return null;
-    return applyImportRows(rows, m);
-  } catch (err) {
-    console.error('[import] Excel read failed', err);
-    toast('خطا در خواندن اکسل؛ فایل سالم و با پسوند xlsx یا xls باشد', 'error');
-    return null;
   }
+
+  // Minimal offline XLSX reader for simple files is complex;
+  // instruct user or fall back
+  toast(
+    'برای فایل اکسل، کتابخانه XLSX لازم است. فایل را به CSV UTF-8 تبدیل کنید یا صفحه را با xlsx.full.min.js باز کنید.',
+    'error'
+  );
+  return null;
 }
 
 // ——— Offline XLSX writer (no external lib) ———
@@ -748,12 +760,12 @@ export function exportExcel(onlyDiff = false): void {
   const filename = `anbar-${onlyDiff ? 'diff-' : ''}${dateStr()}.xlsx`;
 
   // Prefer SheetJS
-  {
+  if (window.XLSX) {
     try {
-      const ws = XLSX.utils.json_to_sheet(data);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, onlyDiff ? 'مغایرت‌ها' : 'انبارگردانی');
-      XLSX.writeFile(wb, filename);
+      const ws = window.XLSX.utils.json_to_sheet(data);
+      const wb = window.XLSX.utils.book_new();
+      window.XLSX.utils.book_append_sheet(wb, ws, onlyDiff ? 'مغایرت‌ها' : 'انبارگردانی');
+      window.XLSX.writeFile(wb, filename);
       toast('اکسل ذخیره شد', 'success');
       logAudit('export_xlsx', { count: list.length, onlyDiff, engine: 'sheetjs' });
       return;
@@ -783,6 +795,15 @@ export function exportExcel(onlyDiff = false): void {
 
 /** بارگذاری اختیاری SheetJS از public */
 export function loadSheetJS(): Promise<boolean> {
-  // SheetJS is bundled by Vite as a project dependency, not loaded from a missing external script.
-  return Promise.resolve(typeof XLSX.read === 'function');
+  return new Promise((resolve) => {
+    if (window.XLSX) {
+      resolve(true);
+      return;
+    }
+    const s = document.createElement('script');
+    s.src = './xlsx.full.min.js';
+    s.onload = () => resolve(!!window.XLSX);
+    s.onerror = () => resolve(false);
+    document.head.appendChild(s);
+  });
 }
