@@ -518,7 +518,7 @@ function renderShell() {
           <button class="btn btn-sm btn-secondary" id="torchBtn">🔦 نور</button>
           <button class="btn btn-sm btn-secondary" id="btnRestartCam">🔄 راه‌اندازی مجدد</button>
           <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;margin-right:auto">
-            <input type="checkbox" id="scannerContinuous" checked /> پیوسته
+            <input type="checkbox" id="scannerContinuous" /> پیوسته
           </label>
         </div>
         <div class="manual-row">
@@ -623,10 +623,9 @@ function bindEvents() {
       const continuous =
         (document.getElementById('scannerContinuous') as HTMLInputElement)?.checked ??
         settings.continuousScan;
-      if (!continuous) {
-        closeScanner();
-        const modal = document.getElementById('scannerModal');
-        if (modal) modal.style.display = 'none';
+      // پس از تأیید تعداد، آمادهٔ خواندن کالای بعدی شود؛ هر بار فقط یک بارکد خوانده می‌شود.
+      if (document.getElementById('scannerModal')?.classList.contains('show')) {
+        restartCamera();
       }
     }
   });
@@ -804,7 +803,7 @@ function bindEvents() {
   });
 
   const cont = document.getElementById('scannerContinuous') as HTMLInputElement | null;
-  if (cont) cont.checked = settings.continuousScan !== false;
+  if (cont) cont.checked = settings.continuousScan === true;
 }
 
 function updateHeader() {

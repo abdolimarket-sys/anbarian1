@@ -7,6 +7,8 @@
  */
 
 import type { AppSettings } from '@/types';
+import { Capacitor } from '@capacitor/core';
+import { BarcodeScanner, BarcodeFormat } from '@capacitor-mlkit/barcode-scanning';
 import { toast } from './ui';
 
 export type ScanSource = 'camera' | 'native' | 'html5' | 'bt' | 'manual';
@@ -221,11 +223,34 @@ function emitScan(code: string, source: ScanSource): void {
 }
 
 async function startCamera(): Promise<void> {
+  if (!active || !opts) return;
   torchOn = false;
   const btn = document.getElementById('torchBtn');
   if (btn) btn.textContent = '🔦 نور';
 
-  // اول native
+  // اسکنر بومی اندروید؛ یک بارکد می‌خواند و سپس منتظر ثبت تعداد می‌ماند.
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const permission = await BarcodeScanner.requestPermissions();
+      if (permission.camera !== 'granted' && permission.camera !== 'limited') {
+        toast('اجازهٔ دسترسی دوربین داده نشد', 'error');
+        return;
+      }
+      const result = await BarcodeScanner.scan({
+        formats: [BarcodeFormat.Ean13, BarcodeFormat.Ean8, BarcodeFormat.UpcA, BarcodeFormat.UpcE, BarcodeFormat.Code128, BarcodeFormat.Code39, BarcodeFormat.Itf, BarcodeFormat.QrCode],
+      });
+      if (!active) return;
+      const code = result.barcodes?.[0]?.rawValue?.trim();
+      if (code) emitScan(code, 'native');
+      else if (active) toast('بارکدی خوانده نشد؛ دوباره تلاش کنید', 'info');
+    } catch (err) {
+      console.error('[scanner] Capacitor scan failed', err);
+      if (active) toast('اسکن دوربین ناموفق بود؛ اجازهٔ دوربین و Google Play Services را بررسی کنید', 'error');
+    }
+    return;
+  }
+
+  // مرورگر دسکتاپ/وب
   const nativeOk = await tryStartNative();
   if (nativeOk) return;
 

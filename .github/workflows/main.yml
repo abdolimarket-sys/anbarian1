@@ -25,6 +25,7 @@ jobs:
 
       - name: Install dependencies and build web app
         run: |
+          npm install --package-lock-only --ignore-scripts --registry=https://registry.npmjs.org/
           npm ci --registry=https://registry.npmjs.org/
           npm run build
           test -f dist/index.html
