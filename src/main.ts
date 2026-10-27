@@ -623,10 +623,9 @@ function bindEvents() {
       const continuous =
         (document.getElementById('scannerContinuous') as HTMLInputElement)?.checked ??
         settings.continuousScan;
-      if (!continuous) {
-        closeScanner();
-        const modal = document.getElementById('scannerModal');
-        if (modal) modal.style.display = 'none';
+      // پس از تأیید تعداد، آمادهٔ خواندن کالای بعدی شود؛ هر بار فقط یک بارکد خوانده می‌شود.
+      if (document.getElementById('scannerModal')?.classList.contains('show')) {
+        restartCamera();
       }
     }
   });
